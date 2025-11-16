@@ -1,0 +1,62 @@
+# Dockerfile for SimulStreaming Whisper ASR Service
+FROM nvidia/cuda:12.1.0-base-ubuntu22.04
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    git \
+    wget \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY simul_whisper/ ./simul_whisper/
+COPY whisper_streaming/ ./whisper_streaming/
+COPY simulstreaming_whisper.py .
+COPY simulstreaming_whisper_server.py .
+COPY token_buffer.py .
+COPY apply_vad_iterator.py .
+
+# Create directory for models
+RUN mkdir -p /models
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV MODEL_PATH=/models/large-v3.pt
+ENV LANGUAGE=fr
+ENV TASK=translate
+ENV MIN_CHUNK_SIZE=1.2
+ENV FRAME_THRESHOLD=25
+ENV BEAMS=1
+ENV PORT=43001
+ENV HOST=0.0.0.0
+
+# Expose port for server
+EXPOSE 43001
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python3 -c "import socket; s=socket.socket(); s.connect(('localhost', ${PORT})); s.close()" || exit 1
+
+# Default command (server mode)
+CMD python3 simulstreaming_whisper_server.py \
+    --model_path ${MODEL_PATH} \
+    --language ${LANGUAGE} \
+    --task ${TASK} \
+    --min-chunk-size ${MIN_CHUNK_SIZE} \
+    --frame_threshold ${FRAME_THRESHOLD} \
+    --beams ${BEAMS} \
+    --host ${HOST} \
+    --port ${PORT} \
+    --vac

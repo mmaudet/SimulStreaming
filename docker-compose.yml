@@ -1,0 +1,94 @@
+services:
+  whisper-asr:
+    build:
+      context: .
+      dockerfile: Dockerfile.whisper
+    image: simulstreaming-whisper:latest
+    container_name: simulstreaming-whisper
+    restart: unless-stopped
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    ports:
+      - "43001:43001"
+
+    volumes:
+      # Mount for Whisper models
+      - ./models/whisper:/models
+      # Optional: mount for logs
+      - ./logs/whisper:/app/logs
+
+    environment:
+      - LANGUAGE=${WHISPER_LANGUAGE:-fr}
+      - TASK=${WHISPER_TASK:-translate}
+      - MIN_CHUNK_SIZE=${WHISPER_MIN_CHUNK_SIZE:-1.2}
+      - FRAME_THRESHOLD=${WHISPER_FRAME_THRESHOLD:-25}
+      - BEAMS=${WHISPER_BEAMS:-1}
+      - PORT=43001
+      - HOST=0.0.0.0
+      - MODEL_PATH=/models/large-v3.pt
+
+    networks:
+      - simulstreaming-net
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.connect(('localhost', 43001)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  translation:
+    build:
+      context: .
+      dockerfile: Dockerfile.translation
+    image: simulstreaming-translation:latest
+    container_name: simulstreaming-translation
+    restart: unless-stopped
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    volumes:
+      # Mount for EuroLLM models
+      - ./models/EuroLLM-9B-Instruct:/app/EuroLLM-9B-Instruct
+      - ./models/ct2_EuroLLM-9B-Instruct:/app/ct2_EuroLLM-9B-Instruct
+      # Optional: mount for logs
+      - ./logs/translation:/app/logs
+
+    environment:
+      - LANGUAGE=${TRANSLATION_LANGUAGE:-fr}
+      - MIN_CHUNK_SIZE=${TRANSLATION_MIN_CHUNK_SIZE:-1}
+      - MAX_CONTEXT_LENGTH=${TRANSLATION_MAX_CONTEXT_LENGTH:-300}
+      - BUFFER_TRIMMING=${TRANSLATION_BUFFER_TRIMMING:-sentences}
+
+    networks:
+      - simulstreaming-net
+
+    depends_on:
+      whisper-asr:
+        condition: service_healthy
+
+    stdin_open: true
+    tty: true
+
+networks:
+  simulstreaming-net:
+    driver: bridge
+
+volumes:
+  whisper-models:
+  eurollm-models:

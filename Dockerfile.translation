@@ -1,0 +1,46 @@
+# Dockerfile for SimulStreaming EuroLLM Translation Service
+FROM nvidia/cuda:12.1.0-base-ubuntu22.04
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    git \
+    git-lfs \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CTranslate2 and dependencies
+RUN pip3 install --no-cache-dir \
+    ctranslate2 \
+    sentencepiece \
+    transformers \
+    torch \
+    regex
+
+# Copy translation code
+COPY translate/ ./translate/
+
+# Create directories for models
+RUN mkdir -p /models/EuroLLM-9B-Instruct /models/ct2_EuroLLM-9B-Instruct
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV LANGUAGE=fr
+ENV MIN_CHUNK_SIZE=1
+ENV MAX_CONTEXT_LENGTH=300
+ENV BUFFER_TRIMMING=sentences
+
+# Note: Models need to be downloaded separately due to size
+# Instructions in README for model setup
+
+# Default command
+CMD ["python3", "translate/simul_llm_translate.py", \
+     "--min-chunk-size", "${MIN_CHUNK_SIZE}", \
+     "--language", "${LANGUAGE}", \
+     "--max-context-length", "${MAX_CONTEXT_LENGTH}", \
+     "--buffer_trimming", "${BUFFER_TRIMMING}", \
+     "--language-specific-len-threshold"]
